@@ -1,0 +1,51 @@
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wx_semantic_search
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+    volumes:
+      - db:/var/lib/postgresql
+      - ./db/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+      - ./db/init.sql:/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d wx_semantic_search"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  api:
+    build: ./api
+    restart: unless-stopped
+    environment:
+      WX_SEMANTIC_SEARCH_API_KEY: ${WX_SEMANTIC_SEARCH_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: wx_semantic_search
+      PGDATABASE: wx_semantic_search
+    ports:
+      - "${WX_SEMANTIC_SEARCH_PORT:-5757}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  db:
